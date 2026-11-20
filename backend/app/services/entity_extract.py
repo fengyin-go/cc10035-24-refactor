@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from app.services.base import BaseModuleService
+from app.services.distribution import build_distribution_dataset, dataset_counts
 from app.store import store
 
 
@@ -51,14 +52,13 @@ class EntityExtractService(BaseModuleService):
             })
         return {"ok": True, "source_uri": source_uri, "entity_count": len(entities), "entities": entities}
 
+    def entity_distribution_dataset(self) -> dict[str, Any]:
+        """实体类型的分布计数解释数据集：计数与贡献明细一体，供聚合视图定位。"""
+        return build_distribution_dataset(store.rows(self.MODULE), "实体类型")
+
     def compute_entity_distribution(self) -> dict[str, int]:
         """计算实体类型分布，供聚合视图消费。"""
-        rows = store.rows(self.MODULE)
-        dist: dict[str, int] = {}
-        for row in rows:
-            etype = row.get("实体类型", "未知")
-            dist[etype] = dist.get(etype, 0) + 1
-        return dist
+        return dataset_counts(self.entity_distribution_dataset())
 
     def extract_for_relation_graph(self) -> list[dict[str, Any]]:
         """将已入库实体提供给关系图谱模块构建关系。"""

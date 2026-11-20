@@ -5,6 +5,7 @@ import hashlib
 from typing import Any
 
 from app.services.base import BaseModuleService
+from app.services.distribution import build_distribution_dataset, dataset_counts
 from app.store import store
 
 
@@ -70,20 +71,22 @@ class SentimentTagService(BaseModuleService):
             "results": ok_results,
         }
 
-    def compute_sentiment_summary(self) -> dict[str, Any]:
-        """情感分布摘要，供聚合视图消费。"""
+    def sentiment_summary_dataset(self) -> dict[str, Any]:
+        """情感摘要的分布计数解释数据集：情感倾向与强烈程度各一份。"""
         rows = store.rows(self.MODULE)
-        dist: dict[str, int] = {}
-        intensity_dist: dict[str, int] = {}
-        for row in rows:
-            sent = row.get("情感倾向", "未知")
-            dist[sent] = dist.get(sent, 0) + 1
-            intensity_dist[row.get("强烈程度", "未知")] = \
-                intensity_dist.get(row.get("强烈程度", "未知"), 0) + 1
         return {
             "total_records": len(rows),
-            "sentiment_distribution": dist,
-            "intensity_distribution": intensity_dist,
+            "sentiment": build_distribution_dataset(rows, "情感倾向"),
+            "intensity": build_distribution_dataset(rows, "强烈程度"),
+        }
+
+    def compute_sentiment_summary(self) -> dict[str, Any]:
+        """情感分布摘要，供聚合视图消费。"""
+        datasets = self.sentiment_summary_dataset()
+        return {
+            "total_records": datasets["total_records"],
+            "sentiment_distribution": dataset_counts(datasets["sentiment"]),
+            "intensity_distribution": dataset_counts(datasets["intensity"]),
         }
 
     def domain_snapshot(self) -> dict[str, Any]:

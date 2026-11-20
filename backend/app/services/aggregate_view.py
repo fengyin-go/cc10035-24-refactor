@@ -20,11 +20,28 @@ class AggregateViewService(BaseModuleService):
     ACTION_RULES = {"启用视图": "草稿", "停用视图": "已启用"}
     NEGATIVE_ACTIONS = ["停用视图"]
 
+    @staticmethod
+    def _distribution_details(dataset: dict[str, Any]) -> list[dict[str, Any]]:
+        """把数据集中的定位依据回写成本次聚合的明细清单。
+
+        每个类别的计数与成员清单一同落进明细，点进类别即可按
+        count == len(members) 互相复算。
+        """
+        return [
+            {
+                "category": category,
+                "count": count,
+                "members": list(dataset["members"].get(category, [])),
+            }
+            for category, count in dataset["counts"].items()
+        ]
+
     def aggregate_entity_distribution(self) -> dict[str, Any]:
         """消费实体抽取的分布数据，生成聚合视图。"""
         from app.services.entity_extract import EntityExtractService
         ees = EntityExtractService()
-        dist = ees.compute_entity_distribution()
+        dataset = ees.entity_distribution_dataset()
+        dist = dataset["counts"]
         return {
             "view_name": "实体类型分布",
             "chart_type": "pie",
@@ -32,20 +49,36 @@ class AggregateViewService(BaseModuleService):
             "dimensions": list(dist.keys()),
             "values": list(dist.values()),
             "total_entities": sum(dist.values()),
+            "details": self._distribution_details(dataset),
         }
 
     def aggregate_sentiment_trend(self) -> dict[str, Any]:
         """消费情感标注的分布数据。"""
         from app.services.sentiment_tag import SentimentTagService
         sts = SentimentTagService()
-        summary = sts.compute_sentiment_summary()
+        datasets = sts.sentiment_summary_dataset()
+        sentiment = datasets["sentiment"]
         return {
             "view_name": "情感趋势",
             "chart_type": "bar",
             "data_source": "sentiment_tag",
-            "sentiment_distribution": summary["sentiment_distribution"],
-            "total_records": summary["total_records"],
+            "sentiment_distribution": dict(sentiment["counts"]),
+            "total_records": datasets["total_records"],
+            "details": self._distribution_details(sentiment),
         }
+
+    def category_detail(self, data_source: str, category: str) -> dict[str, Any] | None:
+        """点进某一来源的类别明细：返回该类别当轮的计数与成员（定位依据）。"""
+        if data_source == "entity_extract":
+            panel = self.aggregate_entity_distribution()
+        elif data_source == "sentiment_tag":
+            panel = self.aggregate_sentiment_trend()
+        else:
+            return None
+        for detail in panel["details"]:
+            if detail["category"] == category:
+                return detail
+        return None
 
     def aggregate_quality_metrics(self) -> dict[str, Any]:
         """消费质量检查的运行结果。"""
